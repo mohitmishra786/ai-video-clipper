@@ -1,52 +1,141 @@
 <!DOCTYPE html>  
-<html lang="en">  
+<html>  
 <head>  
-    <meta charset="UTF-8">  
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
-    <title>AI Video Clipper</title>  
-    <link rel="stylesheet" href="/static/style.css">  
+    <title>Technical Video Clip Extractor</title>  
+    <style>  
+        body {  
+            font-family: Arial, sans-serif;  
+            max-width: 800px;  
+            margin: 0 auto;  
+            padding: 20px;  
+            background-color: #f5f5f5;  
+        }  
+        .container {  
+            margin-top: 20px;  
+            background-color: white;  
+            padding: 20px;  
+            border-radius: 8px;  
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);  
+        }  
+        #result {  
+            margin-top: 20px;  
+        }  
+        .error {  
+            color: red;  
+            padding: 10px;  
+            background-color: #ffe6e6;  
+            border-radius: 4px;  
+        }  
+        .input-group {  
+            display: flex;  
+            gap: 10px;  
+            margin-bottom: 20px;  
+        }  
+        input {  
+            padding: 8px;  
+            border: 1px solid #ddd;  
+            border-radius: 4px;  
+            flex-grow: 1;  
+        }  
+        button {  
+            padding: 8px 16px;  
+            background-color: #007bff;  
+            color: white;  
+            border: none;  
+            border-radius: 4px;  
+            cursor: pointer;  
+        }  
+        button:hover {  
+            background-color: #0056b3;  
+        }  
+        .clip-list {  
+            list-style: none;  
+            padding: 0;  
+        }  
+        .clip-item {  
+            margin: 10px 0;  
+            padding: 10px;  
+            background-color: #f8f9fa;  
+            border-radius: 4px;  
+            border: 1px solid #ddd;  
+        }  
+        .clip-link {  
+            color: #007bff;  
+            text-decoration: none;  
+        }  
+        .clip-link:hover {  
+            text-decoration: underline;  
+        }  
+        .processing {  
+            color: #666;  
+            font-style: italic;  
+        }  
+        .metadata {  
+            color: #666;  
+            font-size: 0.9em;  
+            margin-top: 5px;  
+        }  
+    </style>  
 </head>  
 <body>  
     <div class="container">  
-        <h1>AI Video Clipper</h1>  
-        <form id="video-form">  
-            <label for="url">Enter YouTube Video URL:</label>  
-            <input type="text" id="url" name="url" placeholder="https://www.youtube.com/watch?v=example" required>  
-            <button type="submit">Process Video</button>  
-        </form>  
-        <div id="results"></div>  
+        <h1>Technical Video Clip Extractor</h1>  
+        <div class="input-group">  
+            <input type="text" id="youtubeUrl" placeholder="Enter YouTube URL">  
+            <button onclick="processVideo()">Process Video</button>  
+        </div>  
+        <div id="result"></div>  
     </div>  
+
     <script>  
-        const form = document.getElementById('video-form');  
-        const resultsDiv = document.getElementById('results');  
+        function processVideo() {  
+            const url = document.getElementById('youtubeUrl').value;  
+            const resultDiv = document.getElementById('result');  
 
-        form.addEventListener('submit', async (e) => {  
-            e.preventDefault();  
-            resultsDiv.innerHTML = 'Processing...';  
+            resultDiv.innerHTML = '<p class="processing">Processing video... This may take a few minutes.</p>';  
 
-            const url = document.getElementById('url').value;  
-            const response = await fetch('/process', {  
+            fetch('/process', {  
                 method: 'POST',  
-                headers: { 'Content-Type': 'application/json' },  
-                body: JSON.stringify({ url })  // Send URL as JSON  
-            });  
+                headers: {  
+                    'Content-Type': 'application/json',  
+                },  
+                body: JSON.stringify({ url: url })  
+            })  
+            .then(response => response.json())  
+            .then(data => {  
+                if (data.error) {  
+                    resultDiv.innerHTML = `<p class="error">Error: ${data.error}</p>`;  
+                } else {  
+                    let html = '<h3>Generated Clips:</h3>';  
+                    html += '<ul class="clip-list">';  
+                    data.clips.forEach((clip, index) => {  
+                        html += `  
+                            <li class="clip-item">  
+                                <a class="clip-link" href="${clip.url}" target="_blank">  
+                                    Clip ${index + 1}  
+                                </a>  
+                                <div class="metadata">  
+                                    Filename: ${clip.filename}  
+                                </div>  
+                            </li>`;  
+                    });  
+                    html += '</ul>';  
 
-            if (response.ok) {  
-                const data = await response.json();  
-                resultsDiv.innerHTML = '<h2>Clips:</h2>';  
-                data.clips.forEach(clip => {  
-                    const link = document.createElement('a');  
-                    link.href = `/clips/${clip}`;  
-                    link.textContent = clip;  
-                    link.target = '_blank';  
-                    resultsDiv.appendChild(link);  
-                    resultsDiv.appendChild(document.createElement('br'));  
-                });  
-            } else {  
-                const error = await response.json();  
-                resultsDiv.innerHTML = `<p>Error: ${error.error}</p>`;  
-            }  
-        });  
+                    // Add processing metadata  
+                    html += `  
+                        <div class="metadata">  
+                            <p>Total Clips: ${data.total_clips}</p>  
+                            <p>Processing Time: ${data.processing_time ? Math.round(data.processing_time) + ' seconds' : 'N/A'}</p>  
+                            <p>YouTube ID: ${data.youtube_id}</p>  
+                        </div>`;  
+
+                    resultDiv.innerHTML = html;  
+                }  
+            })  
+            .catch(error => {  
+                resultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;  
+            });  
+        }  
     </script>  
 </body>  
 </html>  
