@@ -4,17 +4,21 @@ import whisper
 import yt_dlp  
 import torch  
 import re  
+import logging  
 from flask import Flask, request, render_template, jsonify, send_from_directory  
 from nltk.tokenize import sent_tokenize  
 import nltk  
+from urllib.parse import urlparse, parse_qs  
 
 nltk.download('punkt')  
 
 # Initialize Flask app  
 app = Flask(__name__)  
 
-# Directory to store clips  
+# Directories for logs and clips  
+LOGS_DIR = "logs"  
 CLIPS_DIR = "clips"  
+os.makedirs(LOGS_DIR, exist_ok=True)  
 os.makedirs(CLIPS_DIR, exist_ok=True)  
 
 # Load Whisper model  
@@ -60,21 +64,48 @@ for keywords in technical_keywords.values():
     all_keywords.update(keywords)  
 
 
-def download_youtube_video(url):  
+def extract_youtube_id(url):  
+    """Extract the YouTube video ID from the URL."""  
+    parsed_url = urlparse(url)  
+    if parsed_url.hostname in ['youtu.be']:  
+        return parsed_url.path[1:]  # Remove leading '/'  
+    elif parsed_url.hostname in ['www.youtube.com', 'youtube.com']:  
+        query_params = parse_qs(parsed_url.query)  
+        return query_params.get('v', [None])[0]  
+    return None  
+
+
+def setup_logger(youtube_id):  
+    """Set up a logger for the given YouTube ID."""  
+    log_file = os.path.join(LOGS_DIR, f"{youtube_id}.log")  
+    logger = logging.getLogger(youtube_id)  
+    logger.setLevel(logging.DEBUG)  
+    file_handler = logging.FileHandler(log_file)  
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')  
+    file_handler.setFormatter(formatter)  
+    logger.addHandler(file_handler)  
+    return logger  
+
+
+def download_youtube_video(url, youtube_id, logger):  
     """Download YouTube video using yt-dlp."""  
+    logger.info(f"Starting download for YouTube URL: {url}")  
     ydl_opts = {  
         'format': 'bestvideo+bestaudio/best',  
-        'outtmpl': 'downloaded_video.%(ext)s',  
+        'outtmpl': f"{youtube_id}.%(ext)s",  
         'quiet': True,  
     }  
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:  
         info = ydl.extract_info(url, download=True)  
-        return ydl.prepare_filename(info)  
+        video_path = ydl.prepare_filename(info)  
+        logger.info(f"Video downloaded successfully: {video_path}")  
+        return video_path  
 
 
-def extract_audio(video_path):  
+def extract_audio(video_path, youtube_id, logger):  
     """Extract audio from the video."""  
-    audio_path = "extracted_audio.wav"  
+    audio_path = f"{youtube_id}.wav"  
+    logger.info(f"Extracting audio from video: {video_path}")  
     command = [  
         'ffmpeg',  
         '-i', video_path,  
@@ -84,12 +115,15 @@ def extract_audio(video_path):
         audio_path  
     ]  
     subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)  
+    logger.info(f"Audio extracted successfully: {audio_path}")  
     return audio_path  
 
 
-def transcribe_audio(audio_path):  
+def transcribe_audio(audio_path, logger):  
     """Transcribe audio using Whisper."""  
+    logger.info(f"Starting transcription for audio: {audio_path}")  
     result = model.transcribe(audio_path, word_timestamps=True)  
+    logger.info("Transcription completed successfully.")  
     return result  
 
 
@@ -102,8 +136,9 @@ def sentence_contains_keyword(sentence, keywords):
     return False  
 
 
-def process_transcription(result):  
+def process_transcription(result, logger):  
     """Process transcription to extract technical sentences and timestamps."""  
+    logger.info("Processing transcription to extract technical sentences.")  
     segments = result['segments']  
     sentence_times = []  
     current_sentence = ''  
@@ -141,11 +176,13 @@ def process_transcription(result):
         if sentence_contains_keyword(sentence, all_keywords)  
     ]  
 
+    logger.info(f"Extracted {len(technical_sentences)} technical sentences.")  
     return technical_sentences  
 
 
-def extract_clips(video_path, technical_sentences):  
+def extract_clips(video_path, technical_sentences, youtube_id, logger):  
     """Extract clips based on technical sentences."""  
+    logger.info("Starting clip extraction.")  
     min_clip_duration = 30  
     max_clip_duration = 75  
     clips = []  
@@ -174,10 +211,14 @@ def extract_clips(video_path, technical_sentences):
             current_clip_start = None  
             current_clip_end = None  
 
+    # Create a folder for the clips  
+    clip_folder = os.path.join(CLIPS_DIR, youtube_id)  
+    os.makedirs(clip_folder, exist_ok=True)  
+
     # Extract video clips using FFmpeg  
     clip_filenames = []  
     for idx, (start, end, _) in enumerate(clips):  
-        output_path = os.path.join(CLIPS_DIR, f'clip_{idx+1}.mp4')  
+        output_path = os.path.join(clip_folder, f"{youtube_id}_{idx+1}.mp4")  
         command = [  
             'ffmpeg',  
             '-y',  
@@ -190,6 +231,7 @@ def extract_clips(video_path, technical_sentences):
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)  
         clip_filenames.append(output_path)  
 
+    logger.info(f"Extracted {len(clip_filenames)} clips.")  
     return clip_filenames  
 
 
@@ -207,32 +249,42 @@ def process():
     if not url:  
         return jsonify({'error': 'No URL provided'}), 400  
 
+    youtube_id = extract_youtube_id(url)  
+    if not youtube_id:  
+        return jsonify({'error': 'Invalid YouTube URL'}), 400  
+
+    logger = setup_logger(youtube_id)  
+
     try:  
+        logger.info(f"Processing started for YouTube ID: {youtube_id}")  
+
         # Download YouTube video  
-        video_path = download_youtube_video(url)  
+        video_path = download_youtube_video(url, youtube_id, logger)  
 
         # Extract audio  
-        audio_path = extract_audio(video_path)  
+        audio_path = extract_audio(video_path, youtube_id, logger)  
 
         # Transcribe audio  
-        transcription_result = transcribe_audio(audio_path)  
+        transcription_result = transcribe_audio(audio_path, logger)  
 
         # Process transcription  
-        technical_sentences = process_transcription(transcription_result)  
+        technical_sentences = process_transcription(transcription_result, logger)  
 
         # Extract clips  
-        clip_filenames = extract_clips(video_path, technical_sentences)  
+        clip_filenames = extract_clips(video_path, technical_sentences, youtube_id, logger)  
 
-        # Return the list of clips  
+        logger.info("Processing completed successfully.")  
         return jsonify({'clips': [os.path.basename(clip) for clip in clip_filenames]})  
     except Exception as e:  
+        logger.error(f"Error occurred: {str(e)}")  
         return jsonify({'error': str(e)}), 500  
 
 
-@app.route('/clips/<filename>')  
-def download_clip(filename):  
+@app.route('/clips/<youtube_id>/<filename>')  
+def download_clip(youtube_id, filename):  
     """Serve a clip for download."""  
-    return send_from_directory(CLIPS_DIR, filename)  
+    clip_folder = os.path.join(CLIPS_DIR, youtube_id)  
+    return send_from_directory(clip_folder, filename)  
 
 
 if __name__ == '__main__':  
