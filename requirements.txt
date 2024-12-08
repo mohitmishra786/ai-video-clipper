@@ -1,0 +1,6 @@
+flask  
+yt-dlp  
+torch  
+whisper  
+nltk  
+ffmpeg-python  

@@ -1,0 +1,52 @@
+<!DOCTYPE html>  
+<html lang="en">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+    <title>AI Video Clipper</title>  
+    <link rel="stylesheet" href="/static/style.css">  
+</head>  
+<body>  
+    <div class="container">  
+        <h1>AI Video Clipper</h1>  
+        <form id="video-form">  
+            <label for="url">Enter YouTube Video URL:</label>  
+            <input type="text" id="url" name="url" placeholder="https://www.youtube.com/watch?v=example" required>  
+            <button type="submit">Process Video</button>  
+        </form>  
+        <div id="results"></div>  
+    </div>  
+    <script>  
+        const form = document.getElementById('video-form');  
+        const resultsDiv = document.getElementById('results');  
+
+        form.addEventListener('submit', async (e) => {  
+            e.preventDefault();  
+            resultsDiv.innerHTML = 'Processing...';  
+
+            const url = document.getElementById('url').value;  
+            const response = await fetch('/process', {  
+                method: 'POST',  
+                headers: { 'Content-Type': 'application/json' },  
+                body: JSON.stringify({ url })  // Send URL as JSON  
+            });  
+
+            if (response.ok) {  
+                const data = await response.json();  
+                resultsDiv.innerHTML = '<h2>Clips:</h2>';  
+                data.clips.forEach(clip => {  
+                    const link = document.createElement('a');  
+                    link.href = `/clips/${clip}`;  
+                    link.textContent = clip;  
+                    link.target = '_blank';  
+                    resultsDiv.appendChild(link);  
+                    resultsDiv.appendChild(document.createElement('br'));  
+                });  
+            } else {  
+                const error = await response.json();  
+                resultsDiv.innerHTML = `<p>Error: ${error.error}</p>`;  
+            }  
+        });  
+    </script>  
+</body>  
+</html>  
