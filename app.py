@@ -14,6 +14,13 @@ import time
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+import warnings
+
+# Suppress warnings from faster_whisper/numpy (divide by zero, overflow in matmul)
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="faster_whisper")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="divide by zero encountered")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered")
 
 # Download NLTK data
 try:

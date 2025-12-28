@@ -22,7 +22,7 @@ AI Video Clipper is an open-source tool that uses AI-powered transcription and N
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.11+
 - FFmpeg (`brew install ffmpeg` on macOS)
 
 ### Installation
@@ -32,9 +32,9 @@ AI Video Clipper is an open-source tool that uses AI-powered transcription and N
 git clone https://github.com/mohitmishra786/ai-video-clipper.git
 cd ai-video-clipper
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# Create virtual environment (Python 3.11)
+python3.11 -m venv venv311
+source venv311/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt

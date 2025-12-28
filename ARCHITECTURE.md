@@ -180,10 +180,12 @@ sequenceDiagram
 ai-video-clipper/
 ├── app.py              # Main Flask application
 ├── requirements.txt    # Python dependencies
+├── pyproject.toml      # Project configuration
 ├── templates/
 │   └── index.html      # Frontend UI
 ├── static/
 │   └── style.css       # Styles
+├── src/                # Utility scripts and experiments
 ├── clips/              # Generated clips (gitignored)
 ├── videos/             # Downloaded videos (temp)
 ├── audio/              # Extracted audio (temp)

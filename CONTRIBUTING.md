@@ -50,7 +50,7 @@ Look for issues labeled `good first issue` - these are great for newcomers!
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.11 or higher
 - FFmpeg installed (`brew install ffmpeg` on macOS)
 - Git
 
@@ -62,8 +62,8 @@ git clone https://github.com/mohitmishra786/ai-video-clipper.git
 cd ai-video-clipper
 
 # 2. Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python3.11 -m venv venv311
+source venv311/bin/activate  # On Windows: venv311\Scripts\activate
 
 # 3. Install dependencies
 pip install -r requirements.txt

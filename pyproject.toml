@@ -1,0 +1,64 @@
+[project]
+name = "ai-video-clipper"
+version = "2.0.0"
+description = "AI-powered tool to extract engaging clips from YouTube videos"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Mohit Mishra", email = "mohitmishra786@gmail.com"}
+]
+keywords = ["youtube", "video", "clipper", "ai", "whisper", "transcription"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: Flask",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+]
+
+dependencies = [
+    "flask>=2.0",
+    "yt-dlp>=2023.0.0",
+    "torch>=2.0",
+    "faster-whisper>=0.9.0",
+    "nltk>=3.8",
+    "ffmpeg-python>=0.2.0",
+    "scikit-learn>=1.3.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=23.0",
+    "flake8>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mohitmishra786/ai-video-clipper"
+Repository = "https://github.com/mohitmishra786/ai-video-clipper"
+Issues = "https://github.com/mohitmishra786/ai-video-clipper/issues"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+include = '\.pyi?$'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

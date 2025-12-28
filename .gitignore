@@ -164,5 +164,7 @@ cython_debug/
 # Not needed folders
 clips/
 audio/
-video/
+videos/
+logs/
 aiVid/
+venv311/
