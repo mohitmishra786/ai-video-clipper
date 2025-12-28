@@ -1,6 +1,7 @@
-flask  
-yt-dlp  
-torch  
-whisper  
-nltk  
-ffmpeg-python  
+flask
+yt-dlp
+torch
+faster-whisper
+nltk
+ffmpeg-python
+scikit-learn
