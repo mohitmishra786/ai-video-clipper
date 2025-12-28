@@ -108,6 +108,9 @@ def download_youtube_video(url, youtube_id, logger):
     logger.info(f"Starting download for YouTube URL: {url}")
     video_path = os.path.join(VIDEOS_DIR, f"{youtube_id}.mp4")
 
+    cookie_file = '/tmp/cookies.txt'
+    cookies_content = os.environ.get('COOKIES_CONTENT')
+    
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': video_path,
@@ -119,6 +122,16 @@ def download_youtube_video(url, youtube_id, logger):
         'ignoreerrors': False,
         'noplaylist': True,
     }
+
+    # Inject cookies if available (fixes "Sign in to confirm you’re not a bot")
+    if cookies_content:
+        try:
+            with open(cookie_file, 'w') as f:
+                f.write(cookies_content)
+            ydl_opts['cookiefile'] = cookie_file
+            logger.info("Using provided cookies for yt-dlp authentication")
+        except Exception as e:
+            logger.warning(f"Failed to write cookies file: {e}")
 
     try:
         # Remove existing file if it exists
