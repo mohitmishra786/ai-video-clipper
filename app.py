@@ -229,6 +229,82 @@ def transcribe_audio(audio_path, logger):
         raise
 
 
+def generate_clip_title(sentences, keyword=None, max_length=60):
+    """
+    Generate a short, engaging title for a clip based on its transcript content.
+    
+    Args:
+        sentences: List of sentences in the clip
+        keyword: Optional keyword that was searched for
+        max_length: Maximum length of the title
+    
+    Returns:
+        A concise, descriptive title string
+    """
+    if not sentences:
+        return "Untitled Clip"
+    
+    # Common filler words to remove from titles
+    filler_words = {
+        'um', 'uh', 'like', 'you know', 'basically', 'actually', 'literally',
+        'so', 'well', 'right', 'okay', 'ok', 'and', 'but', 'the', 'a', 'an',
+        'i', 'we', 'they', 'he', 'she', 'it', 'is', 'are', 'was', 'were',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare',
+        'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by',
+        'from', 'as', 'into', 'through', 'during', 'before', 'after',
+        'above', 'below', 'between', 'under', 'again', 'further', 'then',
+        'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all',
+        'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
+        'not', 'only', 'own', 'same', 'than', 'too', 'very', 'just', 'also'
+    }
+    
+    # Take the first 2-3 sentences for title extraction
+    source_text = ' '.join(sentences[:3])
+    
+    # Clean up the text
+    source_text = re.sub(r'[^\w\s]', ' ', source_text)  # Remove punctuation
+    source_text = re.sub(r'\s+', ' ', source_text).strip()  # Normalize whitespace
+    
+    words = source_text.split()
+    
+    # If keyword is provided, try to include it in the title
+    if keyword and keyword.lower() in source_text.lower():
+        # Find a phrase containing the keyword
+        keyword_lower = keyword.lower()
+        for i, word in enumerate(words):
+            if keyword_lower in word.lower():
+                # Extract surrounding context (3 words before and after)
+                start = max(0, i - 2)
+                end = min(len(words), i + 4)
+                title_words = words[start:end]
+                title = ' '.join(title_words).title()
+                if len(title) <= max_length:
+                    return title[:max_length]
+    
+    # Extract key content words (nouns, verbs, adjectives)
+    content_words = [w for w in words if w.lower() not in filler_words and len(w) > 2]
+    
+    if not content_words:
+        content_words = words[:6]
+    
+    # Create title from first meaningful words
+    title_words = []
+    for word in content_words[:8]:
+        title_words.append(word)
+        current_title = ' '.join(title_words)
+        if len(current_title) >= max_length - 10:
+            break
+    
+    title = ' '.join(title_words).title()
+    
+    # Ensure title is not too long
+    if len(title) > max_length:
+        title = title[:max_length-3].rsplit(' ', 1)[0] + '...'
+    
+    return title if title else "Untitled Clip"
+
+
 def analyze_transcript(segments, keyword=None, num_clips=5, logger=None):
     """
     Analyze transcript to find the most engaging clips using TF-IDF scoring.
@@ -393,9 +469,14 @@ def analyze_transcript(segments, keyword=None, num_clips=5, logger=None):
             description = ' '.join(clip_sentences)[:200]  # Truncate description
             if len(' '.join(clip_sentences)) > 200:
                 description += '...'
+            
+            # Generate a short, engaging title from the transcript
+            title = generate_clip_title(clip_sentences, keyword)
+            
             clips.append({
                 'start': clip_start,
                 'end': clip_end,
+                'title': title,
                 'description': description,
                 'score': clip_score
             })
@@ -556,6 +637,7 @@ def extract_clips(video_path, clip_data, youtube_id, logger, audio_path=None):
                     'start': start,
                     'end': end,
                     'duration': end - start,
+                    'title': clip.get('title', f'Clip {idx+1}'),
                     'description': clip['description']
                 })
                 logger.info(f"Created clip {idx+1}: {output_path} ({end-start:.2f}s)")

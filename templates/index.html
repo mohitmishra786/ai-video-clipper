@@ -1,19 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Video Clipper - Extract Best Moments from YouTube</title>
-    <meta name="description" content="AI-powered tool to automatically extract the most engaging clips from YouTube videos">
+    <meta name="description"
+        content="AI-powered tool to automatically extract the most engaging clips from YouTube videos">
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Header -->
         <header class="header">
             <div class="logo">
-                <span class="logo-icon">🎬</span>
+                <span class="logo-icon">VC</span>
                 <h1>AI Video Clipper</h1>
             </div>
             <p class="tagline">Extract the most engaging moments from any YouTube video</p>
@@ -25,52 +28,37 @@
                 <form id="clipForm" onsubmit="processVideo(event)">
                     <div class="form-group">
                         <label for="youtubeUrl">
-                            <span class="label-icon">🔗</span>
+                            <span class="label-icon">URL</span>
                             YouTube URL
                         </label>
-                        <input 
-                            type="url" 
-                            id="youtubeUrl" 
-                            placeholder="https://www.youtube.com/watch?v=..."
-                            required
-                            autocomplete="off"
-                        >
+                        <input type="url" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." required
+                            autocomplete="off">
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="keyword">
-                                <span class="label-icon">🎯</span>
+                                <span class="label-icon">KW</span>
                                 Theme / Keyword <span class="optional">(optional)</span>
                             </label>
-                            <input 
-                                type="text" 
-                                id="keyword" 
-                                placeholder="e.g., funny moments, tutorial, tips"
-                            >
+                            <input type="text" id="keyword" placeholder="e.g., funny moments, tutorial, tips">
                         </div>
 
                         <div class="form-group">
                             <label for="numClips">
-                                <span class="label-icon">✂️</span>
+                                <span class="label-icon">#</span>
                                 Number of Clips
                             </label>
                             <div class="range-container">
-                                <input 
-                                    type="range" 
-                                    id="numClips" 
-                                    min="1" 
-                                    max="10" 
-                                    value="5"
-                                    oninput="updateClipCount(this.value)"
-                                >
+                                <input type="range" id="numClips" min="1" max="10" value="5"
+                                    oninput="updateClipCount(this.value)">
                                 <span id="clipCount" class="clip-count">5</span>
                             </div>
                         </div>
                     </div>
 
                     <button type="submit" class="btn-primary" id="processBtn">
-                        <span class="btn-icon">⚡</span>
+                        <span class="btn-icon">-></span>
                         Extract Clips
                     </button>
                 </form>
@@ -90,7 +78,7 @@
 
             <!-- Error Display -->
             <div id="errorDisplay" class="error-display hidden">
-                <span class="error-icon">⚠️</span>
+                <span class="error-icon">!</span>
                 <p id="errorMessage"></p>
                 <button onclick="hideError()" class="btn-secondary">Try Again</button>
             </div>
@@ -98,7 +86,7 @@
             <!-- Results Section -->
             <div id="resultsSection" class="results-section hidden">
                 <div class="results-header">
-                    <h2>🎉 Extracted Clips</h2>
+                    <h2>Extracted Clips</h2>
                     <div class="results-meta">
                         <span id="clipCountResult"></span>
                         <span id="processingTime"></span>
@@ -107,7 +95,7 @@
 
                 <div class="results-actions">
                     <button onclick="downloadAll()" class="btn-download-all">
-                        <span class="btn-icon">📦</span>
+                        <span class="btn-icon">ZIP</span>
                         Download All (ZIP)
                     </button>
                 </div>
@@ -120,7 +108,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>Powered by AI • Built with ❤️ using FFmpeg & Whisper</p>
+            <p>Powered by AI - Built with FFmpeg & Whisper</p>
         </footer>
     </div>
 
@@ -136,13 +124,13 @@
             document.getElementById('errorDisplay').classList.add('hidden');
             document.getElementById('resultsSection').classList.add('hidden');
             document.getElementById('processBtn').disabled = true;
-            document.getElementById('processBtn').innerHTML = '<span class="btn-icon">⏳</span> Processing...';
+            document.getElementById('processBtn').innerHTML = '<span class="btn-icon">...</span> Processing...';
         }
 
         function hideProcessing() {
             document.getElementById('processingStatus').classList.add('hidden');
             document.getElementById('processBtn').disabled = false;
-            document.getElementById('processBtn').innerHTML = '<span class="btn-icon">⚡</span> Extract Clips';
+            document.getElementById('processBtn').innerHTML = '<span class="btn-icon">-></span> Extract Clips';
         }
 
         function showError(message) {
@@ -168,7 +156,7 @@
 
         async function processVideo(event) {
             event.preventDefault();
-            
+
             const url = document.getElementById('youtubeUrl').value.trim();
             const keyword = document.getElementById('keyword').value.trim();
             const numClips = parseInt(document.getElementById('numClips').value);
@@ -210,10 +198,10 @@
 
         function displayResults(data) {
             currentYoutubeId = data.youtube_id;
-            
+
             document.getElementById('resultsSection').classList.remove('hidden');
             document.getElementById('clipCountResult').textContent = `${data.total_clips} clips extracted`;
-            document.getElementById('processingTime').textContent = `⏱️ ${data.processing_time}s`;
+            document.getElementById('processingTime').textContent = `${data.processing_time}s`;
 
             const grid = document.getElementById('clipsGrid');
             grid.innerHTML = '';
@@ -237,15 +225,16 @@
                             <span class="clip-number">Clip ${index + 1}</span>
                             <span class="clip-duration">${formatDuration(clip.duration)}</span>
                         </div>
+                        <h3 class="clip-title">${clip.title || 'Untitled Clip'}</h3>
                         <p class="clip-description">${clip.description}</p>
                         <div class="clip-timestamps">
-                            <span>📍 ${formatDuration(clip.start)} - ${formatDuration(clip.end)}</span>
+                            <span>${formatDuration(clip.start)} - ${formatDuration(clip.end)}</span>
                         </div>
                         <button 
                             onclick="downloadClip('${data.youtube_id}', '${clip.filename}')" 
                             class="btn-download"
                         >
-                            <span class="btn-icon">⬇️</span>
+                            <span class="btn-icon">DL</span>
                             Download
                         </button>
                     </div>
@@ -268,4 +257,5 @@
         }
     </script>
 </body>
+
 </html>
