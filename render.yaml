@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ai-video-clipper
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 -k uvicorn.workers.UvicornWorker app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: NLTK_DATA
+        value: /opt/render/project/src/nltk_data
