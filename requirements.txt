@@ -1,7 +1,8 @@
 flask
+gunicorn
 yt-dlp
-torch
 faster-whisper
 nltk
 ffmpeg-python
 scikit-learn
+numpy
