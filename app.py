@@ -113,8 +113,15 @@ def download_youtube_video(url, youtube_id, logger):
     
     # 1. Check Render Secret File (Best for large cookies)
     if os.path.exists('/etc/secrets/cookies.txt'):
-        cookie_file = '/etc/secrets/cookies.txt'
-        logger.info("Using cookies from /etc/secrets/cookies.txt")
+        # Copy to writable temp location because yt-dlp tries to update the cookie file
+        try:
+            shutil.copy('/etc/secrets/cookies.txt', '/tmp/cookies.txt')
+            cookie_file = '/tmp/cookies.txt'
+            logger.info("Using cookies from /etc/secrets/cookies.txt (copied to temp)")
+        except Exception as e:
+            logger.warning(f"Failed to copy secret cookies to temp: {e}")
+            # Fallback to direct path (might crash if write needed, but better than nothing)
+            cookie_file = '/etc/secrets/cookies.txt'
         
     # 2. Check Env Var Content (Fallback)
     elif os.environ.get('COOKIES_CONTENT'):
