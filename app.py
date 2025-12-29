@@ -104,12 +104,10 @@ def extract_youtube_id(url):
 
 
 def download_youtube_video(url, youtube_id, logger):
-    """Download YouTube video with enhanced error handling."""
+    """Download YouTube video with enhanced error handling and fallback strategies."""
     logger.info(f"Starting download for YouTube URL: {url}")
     video_path = os.path.join(VIDEOS_DIR, f"{youtube_id}.mp4")
     
-    logger.info("Using latest yt-dlp with auto-detected best clients")
-
     # Check environment
     import platform
     import socket
@@ -123,58 +121,101 @@ def download_youtube_video(url, youtube_id, logger):
     except Exception:
         logger.info("Could not determine hostname/IP")
     
-    # Check yt-dlp version
     logger.info(f"yt-dlp version: {yt_dlp.version.__version__}")
     
-    # Latest yt-dlp (2025.12.8+) auto-detects best clients
-    # Uses android sdkless and web safari clients automatically
+    # Remove existing file if it exists
+    if os.path.exists(video_path):
+        os.remove(video_path)
+        logger.info(f"Removed existing video file: {video_path}")
+    
+    # Strategy 1: Try standard download first (works for most videos)
+    logger.info("Strategy 1: Attempting standard download with auto-detected clients")
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': video_path,
-        'quiet': False,  # Enable output for debugging
-        'no_warnings': False,  # Show warnings
+        'quiet': False,
+        'no_warnings': False,
         'noplaylist': True,
         'ignoreerrors': False,
         'merge_output_format': 'mp4',
-        'verbose': True,  # Verbose logging
     }
-
+    
     try:
-        # Remove existing file if it exists
-        if os.path.exists(video_path):
-            os.remove(video_path)
-            logger.info(f"Removed existing video file: {video_path}")
-
-        logger.info(f"Starting yt-dlp download with options: {ydl_opts}")
-        logger.info(f"Target URL: {url}")
-        logger.info(f"Output path: {video_path}")
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            logger.info("Calling yt-dlp.download()...")
             ydl.download([url])
-            logger.info("yt-dlp.download() completed")
-
-        if not os.path.exists(video_path):
-            logger.error(f"Video file not created at expected path: {video_path}")
-            logger.info(f"Directory contents: {os.listdir(VIDEOS_DIR)}")
-            raise Exception(f"Video file not created at expected path: {video_path}")
-
-        # Verify file size
-        file_size = os.path.getsize(video_path)
-        if file_size == 0:
-            logger.error("Downloaded video file is empty")
-            raise Exception("Downloaded video file is empty")
-
-        logger.info(f"Video downloaded successfully: {video_path} ({file_size} bytes)")
-        return video_path
-
+        
+        if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+            logger.info(f"Strategy 1 SUCCESS: Video downloaded ({os.path.getsize(video_path)} bytes)")
+            return video_path
     except Exception as e:
-        logger.error(f"yt-dlp download failed with error: {type(e).__name__}: {str(e)}")
-        logger.error(f"Full exception: {repr(e)}")
-        if os.path.exists(video_path):
-            logger.info(f"Removing incomplete video file: {video_path}")
-            os.remove(video_path)
-        raise Exception(f"Failed to download video: {str(e)}")
+        error_str = str(e).lower()
+        if 'bot' in error_str or 'sign in' in error_str:
+            logger.warning(f"Strategy 1 failed with bot detection: {str(e)}")
+        else:
+            logger.error(f"Strategy 1 failed: {str(e)}")
+            raise Exception(f"Failed to download video: {str(e)}")
+    
+    # Strategy 2: Try with cookies if available
+    cookie_file = 'cookies.txt' if os.path.exists('cookies.txt') else None
+    if cookie_file:
+        logger.info("Strategy 2: Attempting download with cookies and iOS client")
+        ydl_opts['cookiefile'] = cookie_file
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['ios', 'web_safari'],
+                'player_skip': ['webpage', 'configs'],
+            }
+        }
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            
+            if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+                logger.info(f"Strategy 2 SUCCESS: Video downloaded with cookies ({os.path.getsize(video_path)} bytes)")
+                return video_path
+        except Exception as e:
+            logger.warning(f"Strategy 2 failed: {str(e)}")
+    else:
+        logger.info("Strategy 2 skipped: No cookies.txt found")
+    
+    # Strategy 3: Try with tv_embedded client (no auth required)
+    logger.info("Strategy 3: Attempting download with tv_embedded client")
+    ydl_opts_tv = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': video_path,
+        'quiet': False,
+        'no_warnings': False,
+        'noplaylist': True,
+        'ignoreerrors': False,
+        'merge_output_format': 'mp4',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['tv_embedded'],
+            }
+        }
+    }
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts_tv) as ydl:
+            ydl.download([url])
+        
+        if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+            logger.info(f"Strategy 3 SUCCESS: Video downloaded with tv_embedded ({os.path.getsize(video_path)} bytes)")
+            return video_path
+    except Exception as e:
+        logger.error(f"Strategy 3 failed: {str(e)}")
+    
+    # All strategies failed
+    logger.error("All download strategies failed")
+    if os.path.exists(video_path):
+        os.remove(video_path)
+    
+    raise Exception(
+        "Failed to download video after trying multiple methods. "
+        "This video may require authentication or have geographic restrictions. "
+        "Please try a different video or ensure cookies.txt is up-to-date."
+    )
 
 
 
