@@ -156,10 +156,21 @@ def download_youtube_video(url, youtube_id, logger):
             raise Exception(f"Failed to download video: {str(e)}")
     
     # Strategy 2: Try with cookies if available
-    cookie_file = 'cookies.txt' if os.path.exists('cookies.txt') else None
-    if cookie_file:
+    cookie_source = 'cookies.txt' if os.path.exists('cookies.txt') else None
+    
+    if cookie_source:
         logger.info("Strategy 2: Attempting download with cookies and iOS client")
-        ydl_opts['cookiefile'] = cookie_file
+        
+        # Copy to temp to avoid Permission denied or Read-only errors
+        try:
+            temp_cookie = '/tmp/cookies.txt'
+            shutil.copy(cookie_source, temp_cookie)
+            ydl_opts['cookiefile'] = temp_cookie
+            logger.info(f"Copied cookies from {cookie_source} to {temp_cookie}")
+        except Exception as e:
+            logger.warning(f"Failed to copy cookies to temp: {e}")
+            ydl_opts['cookiefile'] = cookie_source # Fallback
+
         ydl_opts['extractor_args'] = {
             'youtube': {
                 'player_client': ['ios', 'web_safari'],
