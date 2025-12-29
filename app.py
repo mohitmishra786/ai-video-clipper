@@ -117,7 +117,15 @@ def download_youtube_video(url, youtube_id, logger):
         try:
             shutil.copy('/etc/secrets/cookies.txt', '/tmp/cookies.txt')
             cookie_file = '/tmp/cookies.txt'
-            logger.info("Using cookies from /etc/secrets/cookies.txt (copied to temp)")
+            
+            # Validate cookies have YouTube entries
+            youtube_cookies = 0
+            with open(cookie_file, 'r') as f:
+                for line in f:
+                    if 'youtube.com' in line and not line.startswith('#'):
+                        youtube_cookies += 1
+            
+            logger.info(f"Using cookies from /etc/secrets/cookies.txt (copied to temp, {youtube_cookies} YouTube cookies found)")
         except Exception as e:
             logger.warning(f"Failed to copy secret cookies to temp: {e}")
             # Fallback to direct path (might crash if write needed, but better than nothing)
@@ -149,6 +157,19 @@ def download_youtube_video(url, youtube_id, logger):
         'merge_output_format': 'mp4',
         'ignoreerrors': False,
         'noplaylist': True,
+        # Additional options to bypass bot detection
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+                'player_skip': ['webpage', 'configs'],
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
+        }
     }
 
     if cookie_file:

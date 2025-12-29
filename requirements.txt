@@ -1,6 +1,6 @@
 flask
 gunicorn
-yt-dlp
+yt-dlp>=2024.12.23
 faster-whisper
 nltk
 ffmpeg-python
