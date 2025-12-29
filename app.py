@@ -108,9 +108,30 @@ def download_youtube_video(url, youtube_id, logger):
     logger.info(f"Starting download for YouTube URL: {url}")
     video_path = os.path.join(VIDEOS_DIR, f"{youtube_id}.mp4")
 
-    cookie_file = '/tmp/cookies.txt'
-    cookies_content = os.environ.get('COOKIES_CONTENT')
+    # Cookie handling strategy
+    cookie_file = None
     
+    # 1. Check Render Secret File (Best for large cookies)
+    if os.path.exists('/etc/secrets/cookies.txt'):
+        cookie_file = '/etc/secrets/cookies.txt'
+        logger.info("Using cookies from /etc/secrets/cookies.txt")
+        
+    # 2. Check Env Var Content (Fallback)
+    elif os.environ.get('COOKIES_CONTENT'):
+        try:
+            tmp_cookie = '/tmp/cookies.txt'
+            with open(tmp_cookie, 'w') as f:
+                f.write(os.environ.get('COOKIES_CONTENT'))
+            cookie_file = tmp_cookie
+            logger.info("Using cookies from COOKIES_CONTENT env var")
+        except Exception as e:
+            logger.warning(f"Failed to write cookies from env var: {e}")
+            
+    # 3. Check Local File (Dev)
+    elif os.path.exists('cookies.txt'):
+        cookie_file = 'cookies.txt'
+        logger.info("Using local cookies.txt")
+
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': video_path,
@@ -123,15 +144,8 @@ def download_youtube_video(url, youtube_id, logger):
         'noplaylist': True,
     }
 
-    # Inject cookies if available (fixes "Sign in to confirm you’re not a bot")
-    if cookies_content:
-        try:
-            with open(cookie_file, 'w') as f:
-                f.write(cookies_content)
-            ydl_opts['cookiefile'] = cookie_file
-            logger.info("Using provided cookies for yt-dlp authentication")
-        except Exception as e:
-            logger.warning(f"Failed to write cookies file: {e}")
+    if cookie_file:
+         ydl_opts['cookiefile'] = cookie_file
 
     try:
         # Remove existing file if it exists
