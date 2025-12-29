@@ -15,6 +15,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import warnings
+import threading
+import socket
 
 # Suppress warnings from faster_whisper/numpy (divide by zero, overflow in matmul)
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="faster_whisper")
@@ -46,8 +48,17 @@ AUDIO_DIR = "audio"
 for directory in [LOGS_DIR, CLIPS_DIR, VIDEOS_DIR, AUDIO_DIR]:
     os.makedirs(directory, exist_ok=True)
 
+# Initialize PO token server on app startup (for production mode)
+@app.before_request
+def init_po_token():
+    """Initialize PO token server on first request."""
+    if not hasattr(app, 'po_token_initialized'):
+        start_po_token_server()
+        app.po_token_initialized = True
+
 # Global whisper model (lazy loaded)
 whisper_model = None
+po_token_server = None
 
 def get_whisper_model():
     """Lazy load faster-whisper model for CPU."""
@@ -58,6 +69,40 @@ def get_whisper_model():
         # tiny is ~4x faster than base with acceptable accuracy for clip detection
         whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
     return whisper_model
+
+
+def start_po_token_server():
+    """Start the PO token provider server in background."""
+    global po_token_server
+    if po_token_server is not None:
+        return  # Already running
+    
+    try:
+        import bgutil_ytdlp_pot_provider
+        
+        # Start PO token server on a free port
+        port = 8050
+        
+        def run_server():
+            try:
+                # Run the PO token provider server
+                subprocess.Popen(
+                    ['python', '-m', 'bgutil_ytdlp_pot_provider', '--bind', f'127.0.0.1:{port}'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except Exception as e:
+                print(f"Failed to start PO token server: {e}")
+        
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
+        po_token_server = True
+        time.sleep(2)  # Give it time to start
+        print(f"PO Token server started on port {port}")
+    except ImportError:
+        print("bgutil-ytdlp-pot-provider not installed, skipping PO token server")
+    except Exception as e:
+        print(f"Failed to initialize PO token server: {e}")
 
 
 def setup_logger(youtube_id):
@@ -108,44 +153,10 @@ def download_youtube_video(url, youtube_id, logger):
     logger.info(f"Starting download for YouTube URL: {url}")
     video_path = os.path.join(VIDEOS_DIR, f"{youtube_id}.mp4")
 
-    # Cookie handling strategy
-    cookie_file = None
+    # Start PO token server if not already running (optional, helps with some videos)
+    start_po_token_server()
     
-    # 1. Check Render Secret File (Best for large cookies)
-    if os.path.exists('/etc/secrets/cookies.txt'):
-        # Copy to writable temp location because yt-dlp tries to update the cookie file
-        try:
-            shutil.copy('/etc/secrets/cookies.txt', '/tmp/cookies.txt')
-            cookie_file = '/tmp/cookies.txt'
-            
-            # Validate cookies have YouTube entries
-            youtube_cookies = 0
-            with open(cookie_file, 'r') as f:
-                for line in f:
-                    if 'youtube.com' in line and not line.startswith('#'):
-                        youtube_cookies += 1
-            
-            logger.info(f"Using cookies from /etc/secrets/cookies.txt (copied to temp, {youtube_cookies} YouTube cookies found)")
-        except Exception as e:
-            logger.warning(f"Failed to copy secret cookies to temp: {e}")
-            # Fallback to direct path (might crash if write needed, but better than nothing)
-            cookie_file = '/etc/secrets/cookies.txt'
-        
-    # 2. Check Env Var Content (Fallback)
-    elif os.environ.get('COOKIES_CONTENT'):
-        try:
-            tmp_cookie = '/tmp/cookies.txt'
-            with open(tmp_cookie, 'w') as f:
-                f.write(os.environ.get('COOKIES_CONTENT'))
-            cookie_file = tmp_cookie
-            logger.info("Using cookies from COOKIES_CONTENT env var")
-        except Exception as e:
-            logger.warning(f"Failed to write cookies from env var: {e}")
-            
-    # 3. Check Local File (Dev)
-    elif os.path.exists('cookies.txt'):
-        cookie_file = 'cookies.txt'
-        logger.info("Using local cookies.txt")
+    logger.info("Using tv_embedded client (no authentication required)")
 
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
@@ -157,23 +168,28 @@ def download_youtube_video(url, youtube_id, logger):
         'merge_output_format': 'mp4',
         'ignoreerrors': False,
         'noplaylist': True,
-        # Additional options to bypass bot detection
+        # Use multiple client fallbacks to bypass bot detection
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
-                'player_skip': ['webpage', 'configs'],
+                # Try tv_embedded first (no sign-in required), then android, then ios
+                'player_client': ['tv_embedded', 'android', 'ios', 'mweb'],
+                'player_skip': ['webpage', 'configs', 'js'],
+                'skip': ['hls', 'dash', 'translated_subs'],
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-us,en;q=0.5',
-            'Sec-Fetch-Mode': 'navigate',
+            'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
+            'Accept-Language': 'en-US,en;q=0.9',
         }
     }
-
-    if cookie_file:
-         ydl_opts['cookiefile'] = cookie_file
+    
+    # Add PO token provider if available (optional enhancement)
+    if po_token_server:
+        try:
+            ydl_opts['extractor_args']['youtube']['po_token'] = ['http://127.0.0.1:8050']
+            logger.info("PO token server available")
+        except Exception:
+            pass
 
     try:
         # Remove existing file if it exists
@@ -947,6 +963,11 @@ if __name__ == '__main__':
     print("\n" + "="*50)
     print("AI Video Clipper - Starting server...")
     print("="*50)
+    
+    # Start PO token server for YouTube authentication
+    print("Initializing YouTube authentication...")
+    start_po_token_server()
+    
     print("\nOpen http://localhost:5000 in your browser")
     print("\nPress Ctrl+C to stop the server\n")
     app.run(debug=True, host='0.0.0.0', port=5000)
