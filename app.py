@@ -110,16 +110,33 @@ def download_youtube_video(url, youtube_id, logger):
     
     logger.info("Using latest yt-dlp with auto-detected best clients")
 
+    # Check environment
+    import platform
+    import socket
+    logger.info(f"System: {platform.system()} {platform.release()}")
+    logger.info(f"Python: {platform.python_version()}")
+    
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        logger.info(f"Hostname: {hostname}, Local IP: {local_ip}")
+    except Exception:
+        logger.info("Could not determine hostname/IP")
+    
+    # Check yt-dlp version
+    logger.info(f"yt-dlp version: {yt_dlp.version.__version__}")
+    
     # Latest yt-dlp (2025.12.8+) auto-detects best clients
     # Uses android sdkless and web safari clients automatically
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': video_path,
-        'quiet': True,
-        'no_warnings': True,
+        'quiet': False,  # Enable output for debugging
+        'no_warnings': False,  # Show warnings
         'noplaylist': True,
         'ignoreerrors': False,
         'merge_output_format': 'mp4',
+        'verbose': True,  # Verbose logging
     }
 
     try:
@@ -128,23 +145,34 @@ def download_youtube_video(url, youtube_id, logger):
             os.remove(video_path)
             logger.info(f"Removed existing video file: {video_path}")
 
+        logger.info(f"Starting yt-dlp download with options: {ydl_opts}")
+        logger.info(f"Target URL: {url}")
+        logger.info(f"Output path: {video_path}")
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            logger.info("Calling yt-dlp.download()...")
             ydl.download([url])
+            logger.info("yt-dlp.download() completed")
 
         if not os.path.exists(video_path):
+            logger.error(f"Video file not created at expected path: {video_path}")
+            logger.info(f"Directory contents: {os.listdir(VIDEOS_DIR)}")
             raise Exception(f"Video file not created at expected path: {video_path}")
 
         # Verify file size
         file_size = os.path.getsize(video_path)
         if file_size == 0:
+            logger.error("Downloaded video file is empty")
             raise Exception("Downloaded video file is empty")
 
         logger.info(f"Video downloaded successfully: {video_path} ({file_size} bytes)")
         return video_path
 
     except Exception as e:
-        logger.error(f"yt-dlp download failed: {str(e)}")
+        logger.error(f"yt-dlp download failed with error: {type(e).__name__}: {str(e)}")
+        logger.error(f"Full exception: {repr(e)}")
         if os.path.exists(video_path):
+            logger.info(f"Removing incomplete video file: {video_path}")
             os.remove(video_path)
         raise Exception(f"Failed to download video: {str(e)}")
 
@@ -879,11 +907,18 @@ def download_all(youtube_id):
 @app.route('/health')
 def health_check():
     """Health check endpoint."""
+    try:
+        ytdlp_version = yt_dlp.version.__version__
+    except Exception:
+        ytdlp_version = "unknown"
+    
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.datetime.now().isoformat(),
         'disk_space_available': check_disk_space(),
-        'version': '2.0.0'
+        'version': '2.0.0',
+        'yt_dlp_version': ytdlp_version,
+        'python_version': os.sys.version
     })
 
 
