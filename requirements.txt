@@ -1,7 +1,6 @@
 flask
 gunicorn
-yt-dlp>=2024.12.23
-bgutil-ytdlp-pot-provider
+yt-dlp>=2025.12.8
 faster-whisper
 nltk
 ffmpeg-python

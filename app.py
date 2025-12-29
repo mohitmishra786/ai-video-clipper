@@ -15,8 +15,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import warnings
-import threading
-import socket
 
 # Suppress warnings from faster_whisper/numpy (divide by zero, overflow in matmul)
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="faster_whisper")
@@ -48,17 +46,8 @@ AUDIO_DIR = "audio"
 for directory in [LOGS_DIR, CLIPS_DIR, VIDEOS_DIR, AUDIO_DIR]:
     os.makedirs(directory, exist_ok=True)
 
-# Initialize PO token server on app startup (for production mode)
-@app.before_request
-def init_po_token():
-    """Initialize PO token server on first request."""
-    if not hasattr(app, 'po_token_initialized'):
-        start_po_token_server()
-        app.po_token_initialized = True
-
 # Global whisper model (lazy loaded)
 whisper_model = None
-po_token_server = None
 
 def get_whisper_model():
     """Lazy load faster-whisper model for CPU."""
@@ -69,40 +58,6 @@ def get_whisper_model():
         # tiny is ~4x faster than base with acceptable accuracy for clip detection
         whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
     return whisper_model
-
-
-def start_po_token_server():
-    """Start the PO token provider server in background."""
-    global po_token_server
-    if po_token_server is not None:
-        return  # Already running
-    
-    try:
-        import bgutil_ytdlp_pot_provider
-        
-        # Start PO token server on a free port
-        port = 8050
-        
-        def run_server():
-            try:
-                # Run the PO token provider server
-                subprocess.Popen(
-                    ['python', '-m', 'bgutil_ytdlp_pot_provider', '--bind', f'127.0.0.1:{port}'],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-            except Exception as e:
-                print(f"Failed to start PO token server: {e}")
-        
-        thread = threading.Thread(target=run_server, daemon=True)
-        thread.start()
-        po_token_server = True
-        time.sleep(2)  # Give it time to start
-        print(f"PO Token server started on port {port}")
-    except ImportError:
-        print("bgutil-ytdlp-pot-provider not installed, skipping PO token server")
-    except Exception as e:
-        print(f"Failed to initialize PO token server: {e}")
 
 
 def setup_logger(youtube_id):
@@ -152,110 +107,47 @@ def download_youtube_video(url, youtube_id, logger):
     """Download YouTube video with enhanced error handling."""
     logger.info(f"Starting download for YouTube URL: {url}")
     video_path = os.path.join(VIDEOS_DIR, f"{youtube_id}.mp4")
+    
+    logger.info("Using latest yt-dlp with auto-detected best clients")
 
-    # Start PO token server if not already running (optional, helps with some videos)
-    start_po_token_server()
-    
-    logger.info("Using tv_embedded client (no authentication required)")
+    # Latest yt-dlp (2025.12.8+) auto-detects best clients
+    # Uses android sdkless and web safari clients automatically
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': video_path,
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+        'ignoreerrors': False,
+        'merge_output_format': 'mp4',
+    }
 
-    # Check if proxy is configured (helps bypass IP blocks on shared hosting)
-    proxy_url = os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY')
-    
-    # Try multiple strategies to bypass YouTube bot detection
-    strategies = [
-        # Strategy 1: tv_embedded with minimal options (works locally)
-        {
-            'format': '18/best[ext=mp4]/best',  # Force format 18 (360p) - more reliable
-            'outtmpl': video_path,
-            'quiet': True,
-            'no_warnings': False,
-            'noplaylist': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['tv_embedded'],
-                    'player_skip': ['webpage'],
-                }
-            },
-        },
-        # Strategy 2: android client
-        {
-            'format': '18/best[ext=mp4]/best',
-            'outtmpl': video_path,
-            'quiet': True,
-            'no_warnings': False,
-            'noplaylist': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android'],
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
-            }
-        },
-        # Strategy 3: ios client
-        {
-            'format': '18/best[ext=mp4]/best',
-            'outtmpl': video_path,
-            'quiet': True,
-            'no_warnings': False,
-            'noplaylist': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['ios'],
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'com.google.ios.youtube/17.36.4 (iPhone; U; CPU iOS 14_0 like Mac OS X)',
-            }
-        },
-    ]
-    
-    # Add proxy to all strategies if configured
-    if proxy_url:
-        logger.info(f"Using proxy: {proxy_url}")
-        for strategy in strategies:
-            strategy['proxy'] = proxy_url
-    
-    last_error = None
-    for idx, ydl_opts in enumerate(strategies):
-        try:
-            logger.info(f"Attempting download strategy {idx + 1}/{len(strategies)}")
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            
-            # If we got here, download succeeded
-            if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
-                logger.info(f"Download successful using strategy {idx + 1}")
-                return video_path
-            
-        except Exception as e:
-            last_error = str(e)
-            logger.warning(f"Strategy {idx + 1} failed: {str(e)[:100]}")
-            if os.path.exists(video_path):
-                os.remove(video_path)
-            continue
-    
-    # If all strategies failed, raise the last error
-    logger.error(f"All download strategies failed")
-    raise Exception(f"Failed to download video after trying {len(strategies)} methods. Last error: {last_error}")
+    try:
+        # Remove existing file if it exists
+        if os.path.exists(video_path):
+            os.remove(video_path)
+            logger.info(f"Removed existing video file: {video_path}")
 
-    # Remove existing file if it exists
-    if os.path.exists(video_path):
-        os.remove(video_path)
-        logger.info(f"Removed existing video file: {video_path}")
-    
-    # Verify final file
-    if not os.path.exists(video_path):
-        raise Exception(f"Video file not created at expected path: {video_path}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-    file_size = os.path.getsize(video_path)
-    if file_size == 0:
-        raise Exception("Downloaded video file is empty")
+        if not os.path.exists(video_path):
+            raise Exception(f"Video file not created at expected path: {video_path}")
 
-    logger.info(f"Video downloaded successfully: {video_path} ({file_size} bytes)")
-    return video_path
+        # Verify file size
+        file_size = os.path.getsize(video_path)
+        if file_size == 0:
+            raise Exception("Downloaded video file is empty")
+
+        logger.info(f"Video downloaded successfully: {video_path} ({file_size} bytes)")
+        return video_path
+
+    except Exception as e:
+        logger.error(f"yt-dlp download failed: {str(e)}")
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        raise Exception(f"Failed to download video: {str(e)}")
+
 
 
 def extract_audio(video_path, youtube_id, logger):
@@ -999,11 +891,6 @@ if __name__ == '__main__':
     print("\n" + "="*50)
     print("AI Video Clipper - Starting server...")
     print("="*50)
-    
-    # Start PO token server for YouTube authentication
-    print("Initializing YouTube authentication...")
-    start_po_token_server()
-    
     print("\nOpen http://localhost:5000 in your browser")
     print("\nPress Ctrl+C to stop the server\n")
     app.run(debug=True, host='0.0.0.0', port=5000)
