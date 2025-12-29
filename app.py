@@ -158,68 +158,104 @@ def download_youtube_video(url, youtube_id, logger):
     
     logger.info("Using tv_embedded client (no authentication required)")
 
-    ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': video_path,
-        'quiet': True,
-        'no_warnings': True,
-        'extract_audio': False,
-        'postprocessors': [],
-        'merge_output_format': 'mp4',
-        'ignoreerrors': False,
-        'noplaylist': True,
-        # Use multiple client fallbacks to bypass bot detection
-        'extractor_args': {
-            'youtube': {
-                # Try tv_embedded first (no sign-in required), then android, then ios
-                'player_client': ['tv_embedded', 'android', 'ios', 'mweb'],
-                'player_skip': ['webpage', 'configs', 'js'],
-                'skip': ['hls', 'dash', 'translated_subs'],
+    # Check if proxy is configured (helps bypass IP blocks on shared hosting)
+    proxy_url = os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY')
+    
+    # Try multiple strategies to bypass YouTube bot detection
+    strategies = [
+        # Strategy 1: tv_embedded with minimal options (works locally)
+        {
+            'format': '18/best[ext=mp4]/best',  # Force format 18 (360p) - more reliable
+            'outtmpl': video_path,
+            'quiet': True,
+            'no_warnings': False,
+            'noplaylist': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['tv_embedded'],
+                    'player_skip': ['webpage'],
+                }
+            },
+        },
+        # Strategy 2: android client
+        {
+            'format': '18/best[ext=mp4]/best',
+            'outtmpl': video_path,
+            'quiet': True,
+            'no_warnings': False,
+            'noplaylist': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android'],
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
             }
         },
-        'http_headers': {
-            'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
-    }
+        # Strategy 3: ios client
+        {
+            'format': '18/best[ext=mp4]/best',
+            'outtmpl': video_path,
+            'quiet': True,
+            'no_warnings': False,
+            'noplaylist': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['ios'],
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'com.google.ios.youtube/17.36.4 (iPhone; U; CPU iOS 14_0 like Mac OS X)',
+            }
+        },
+    ]
     
-    # Add PO token provider if available (optional enhancement)
-    if po_token_server:
+    # Add proxy to all strategies if configured
+    if proxy_url:
+        logger.info(f"Using proxy: {proxy_url}")
+        for strategy in strategies:
+            strategy['proxy'] = proxy_url
+    
+    last_error = None
+    for idx, ydl_opts in enumerate(strategies):
         try:
-            ydl_opts['extractor_args']['youtube']['po_token'] = ['http://127.0.0.1:8050']
-            logger.info("PO token server available")
-        except Exception:
-            pass
-
-    try:
-        # Remove existing file if it exists
-        if os.path.exists(video_path):
-            os.remove(video_path)
-            logger.info(f"Removed existing video file: {video_path}")
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
+            logger.info(f"Attempting download strategy {idx + 1}/{len(strategies)}")
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-            except Exception as e:
-                logger.error(f"yt-dlp download failed: {str(e)}")
-                raise Exception(f"Failed to download video: {str(e)}")
+            
+            # If we got here, download succeeded
+            if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+                logger.info(f"Download successful using strategy {idx + 1}")
+                return video_path
+            
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"Strategy {idx + 1} failed: {str(e)[:100]}")
+            if os.path.exists(video_path):
+                os.remove(video_path)
+            continue
+    
+    # If all strategies failed, raise the last error
+    logger.error(f"All download strategies failed")
+    raise Exception(f"Failed to download video after trying {len(strategies)} methods. Last error: {last_error}")
 
-        if not os.path.exists(video_path):
-            raise Exception(f"Video file not created at expected path: {video_path}")
+    # Remove existing file if it exists
+    if os.path.exists(video_path):
+        os.remove(video_path)
+        logger.info(f"Removed existing video file: {video_path}")
+    
+    # Verify final file
+    if not os.path.exists(video_path):
+        raise Exception(f"Video file not created at expected path: {video_path}")
 
-        # Verify file size
-        file_size = os.path.getsize(video_path)
-        if file_size == 0:
-            raise Exception("Downloaded video file is empty")
+    file_size = os.path.getsize(video_path)
+    if file_size == 0:
+        raise Exception("Downloaded video file is empty")
 
-        logger.info(f"Video downloaded successfully: {video_path} ({file_size} bytes)")
-        return video_path
-
-    except Exception as e:
-        logger.error(f"Error in download_youtube_video: {str(e)}")
-        if os.path.exists(video_path):
-            os.remove(video_path)
-        raise
+    logger.info(f"Video downloaded successfully: {video_path} ({file_size} bytes)")
+    return video_path
 
 
 def extract_audio(video_path, youtube_id, logger):

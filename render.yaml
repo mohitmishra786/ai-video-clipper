@@ -3,7 +3,7 @@ services:
     name: ai-video-clipper
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt && pip install --upgrade yt-dlp
     startCommand: gunicorn -w 2 app:app
     envVars:
       - key: PYTHON_VERSION
