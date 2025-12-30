@@ -15,6 +15,22 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import warnings
+from groq import Groq
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize Groq client
+groq_client = None
+if os.environ.get("GROQ_API_KEY"):
+    try:
+        groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    except Exception as e:
+        print(f"Failed to initialize Groq client: {e}")
+
+# Suppress warnings
+logging.getLogger('yt_dlp').setLevel(logging.ERROR)
 
 # Suppress warnings from faster_whisper/numpy (divide by zero, overflow in matmul)
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="faster_whisper")
@@ -130,14 +146,16 @@ def download_youtube_video(url, youtube_id, logger):
     
     # Strategy 1: Try standard download first (works for most videos)
     logger.info("Strategy 1: Attempting standard download with auto-detected clients")
+    # Note: Using video_path directly as template
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': video_path,
-        'quiet': False,
-        'no_warnings': False,
-        'noplaylist': True,
-        'ignoreerrors': False,
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
         'merge_output_format': 'mp4',
+        'force_ipv4': False,
+        'force_ipv6': True, # FORCE IPv6
     }
     
     try:
@@ -156,21 +174,10 @@ def download_youtube_video(url, youtube_id, logger):
             raise Exception(f"Failed to download video: {str(e)}")
     
     # Strategy 2: Try with cookies if available
-    cookie_source = 'cookies.txt' if os.path.exists('cookies.txt') else None
-    
-    if cookie_source:
+    cookie_file = 'cookies.txt' if os.path.exists('cookies.txt') else None
+    if cookie_file:
         logger.info("Strategy 2: Attempting download with cookies and iOS client")
-        
-        # Copy to temp to avoid Permission denied or Read-only errors
-        try:
-            temp_cookie = '/tmp/cookies.txt'
-            shutil.copy(cookie_source, temp_cookie)
-            ydl_opts['cookiefile'] = temp_cookie
-            logger.info(f"Copied cookies from {cookie_source} to {temp_cookie}")
-        except Exception as e:
-            logger.warning(f"Failed to copy cookies to temp: {e}")
-            ydl_opts['cookiefile'] = cookie_source # Fallback
-
+        ydl_opts['cookiefile'] = cookie_file
         ydl_opts['extractor_args'] = {
             'youtube': {
                 'player_client': ['ios', 'web_safari'],
@@ -608,11 +615,108 @@ def detect_silences(audio_path, min_silence_duration=0.3, silence_threshold=-35,
             logger.info(f"Found {len(silence_points)} silence points")
         
         return sorted(silence_points)
-    
+        
     except Exception as e:
         if logger:
-            logger.warning(f"Silence detection failed: {e}, using fallback")
+            logger.warning(f"Silence detection failed: {e}")
         return []
+
+def generate_title_with_groq(text, logger=None):
+    """Generate a viral title using Groq (llama-3.1-8b-instant)."""
+    if not groq_client:
+        return None
+        
+    try:
+        completion = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a viral YouTube expert. Create ONE catchy, click-worthy title (under 50 chars) for this video clip. No quotes, no hashtags, no filler."
+                },
+                {
+                    "role": "user",
+                    "content": f"Clip text: {text[:500]}"
+                }
+            ],
+            model="llama-3.1-8b-instant",
+            temperature=0.7,
+            max_tokens=20,
+        )
+        return completion.choices[0].message.content.strip().replace('"', '')
+    except Exception as e:
+        if logger: logger.error(f"Groq title generation failed: {e}")
+        return None
+
+def analyze_transcript_with_groq(segments, num_clips=5, min_duration=15, max_duration=60, logger=None):
+    """
+    Analyze transcript using Groq (llama-3.3-70b-versatile) to find best clips.
+    """
+    if not groq_client:
+        if logger: logger.warning("Groq client not available, skipping AI analysis")
+        return []
+
+    if logger: logger.info(f"Using Groq to find {num_clips} clips ({min_duration}-{max_duration}s)")
+
+    # Format transcript for LLM
+    transcript_text = ""
+    for seg in segments:
+        transcript_text += f"[{seg.start:.1f}-{seg.end:.1f}] {seg.text}\n"
+
+
+    prompt = f"""
+    Analyze this transcript and identify exactly {num_clips} separate, engaging video clips suitable for YouTube Shorts / TikTok.
+    
+    Rules:
+    1. Each clip MUST be between {min_duration} and {max_duration} seconds.
+    2. Clips must have coherent start and end points (complete thoughts).
+    3. Return a JSON Object with a "clips" key.
+    4. Format: {{ "clips": [ {{"start": 10.5, "end": 45.2, "title": "Viral Title", "reason": "Why"}} ] }}
+    
+    Transcript:
+    {transcript_text[:12000]} 
+    """
+
+    try:
+        completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are a video editor. Output JSON object with 'clips' key."},
+                {"role": "user", "content": prompt}
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=0.1,
+            response_format={"type": "json_object"}
+        )
+        
+        content = completion.choices[0].message.content
+        if logger: logger.info(f"Groq Raw Response: {content[:500]}...") # Log start of response
+        
+        import json
+        data = json.loads(content)
+        
+        clips_data = data.get('clips', data) if isinstance(data, dict) else data
+        
+        results = []
+        if isinstance(clips_data, list):
+            for item in clips_data:
+                start = float(item.get('start', 0))
+                end = float(item.get('end', 0))
+                title = item.get('title', 'AI Clip')
+                if 10 <= (end - start) <= 90:
+                    results.append({
+                        'start': start, 
+                        'end': end, 
+                        'title': title, # Include title from AI
+                        'score': 0.95, 
+                        'description': item.get('reason', '')
+                    })
+        
+        if logger: logger.info(f"Groq identified {len(results)} clips")
+        return results
+
+    except Exception as e:
+        if logger: logger.error(f"Groq analysis failed: {e}")
+        return []
+
 
 
 def find_nearest_silence(target_time, silence_points, search_range=5.0, prefer_after=True):
@@ -652,14 +756,18 @@ def find_nearest_silence(target_time, silence_points, search_range=5.0, prefer_a
     return target_time
 
 
-def extract_clips(video_path, clip_data, youtube_id, logger, audio_path=None):
-    """Extract video clips with silence-based boundary detection for clean endings."""
+def extract_clips(video_path, clip_data, youtube_id, logger, audio_path=None, segments=None):
+    """Extract video clips with dynamic boundary detection."""
     logger.info(f"Starting clip extraction for {len(clip_data)} clips")
     
     clip_folder = os.path.join(CLIPS_DIR, youtube_id)
     os.makedirs(clip_folder, exist_ok=True)
     
-    # Detect silence points for clean cut boundaries
+    # Pre-process segments for fast lookup if available
+    segment_starts = []
+    if segments:
+        segment_starts = [s.start for s in segments]
+    
     silence_points = []
     if audio_path and os.path.exists(audio_path):
         silence_points = detect_silences(audio_path, logger=logger)
@@ -670,29 +778,38 @@ def extract_clips(video_path, clip_data, youtube_id, logger, audio_path=None):
         start = clip['start']
         end = clip['end']
         
-        # Find the nearest silence point for a clean ending
-        if silence_points:
-            # Look for a silence point within 4 seconds after our intended end
-            clean_end = find_nearest_silence(end, silence_points, search_range=4.0, prefer_after=True)
-            # Also try to start at a clean point
-            clean_start = find_nearest_silence(start, silence_points, search_range=2.0, prefer_after=False)
+        # Dynamic Boundary Logic
+        # 1. Try to extend end time to the START of the next segment (catch the 'tail')
+        extended_end = end
+        if segments:
+            # Find the segment that ends near our clip end
+            found_next = False
+            for i, s_start in enumerate(segment_starts):
+                if s_start > end + 0.1: # Found a segment starting after our clip
+                    # Gap is (s_start - end). 
+                    # If gap is small (< 2s), extend into it but leave a breath (0.1s buffer)
+                    if s_start - end < 3.0: 
+                        extended_end = max(end, s_start - 0.15) 
+                        logger.info(f"Dynamic Boundary: Extending clip end {end:.2f} -> {extended_end:.2f} (Next segment at {s_start:.2f})")
+                    found_next = True
+                    break
             
-            # Use clean boundaries if they're reasonable
-            if clean_start < start + 2:
-                start = max(0, clean_start - 0.3)  # Small buffer before silence ends
-            else:
-                start = max(0, start - 0.5)
-            
-            if clean_end > end - 1:  # Don't shorten the clip
-                end = clean_end + 0.3  # Small buffer after silence
-            else:
-                end = end + 1.5  # Fallback buffer
-        else:
-            # No silence detection - use buffers
-            start = max(0, start - 0.5)
-            end = end + 2.0  # Larger buffer without silence detection
+            if not found_next:
+                # No next segment found (end of video?), extend slightly
+                extended_end = end + 0.5
         
-        logger.info(f"Clip {idx+1}: adjusted {clip['start']:.1f}-{clip['end']:.1f} -> {start:.1f}-{end:.1f}")
+        # 2. Apply Silence Detection fallback if Dynamic logic didn't do much
+        # Or refine the extended_end if silence is found efficiently
+        
+        if extended_end > end:
+            end = extended_end
+        else:
+             # Fallback: simple buffer
+            end = end + 0.2
+            
+        start = max(0, start - 0.2) # Small start buffer
+        
+        logger.info(f"Clip {idx+1}: Final adjusted {clip['start']:.1f}-{clip['end']:.1f} -> {start:.1f}-{end:.1f}")
         
         output_path = os.path.join(clip_folder, f"clip_{idx+1:02d}.mp4")
         
@@ -816,13 +933,19 @@ def process():
         data = request.get_json()
         url = data.get('url')
         keyword = data.get('keyword', '').strip() or None
-        num_clips = int(data.get('num_clips', 5))
+        # Validate duration inputs
+        duration_mode = data.get('duration_mode', 'short') # short (30-60) or long (90-120)
         
-        # Validate inputs
+        if duration_mode == 'long':
+            min_dur, max_dur = 90, 120
+        else:
+            min_dur, max_dur = 30, 60
+            
         if not url:
             return jsonify({'error': 'No URL provided'}), 400
         
-        num_clips = max(1, min(10, num_clips))  # Clamp between 1-10
+        num_clips = int(data.get('num_clips', 5))
+        num_clips = max(1, min(10, num_clips))
 
         youtube_id = extract_youtube_id(url)
         if not youtube_id:
@@ -830,7 +953,7 @@ def process():
 
         logger = setup_logger(youtube_id)
         logger.info(f"Processing started for YouTube ID: {youtube_id}")
-        logger.info(f"Parameters: keyword='{keyword}', num_clips={num_clips}")
+        logger.info(f"Parameters: keyword='{keyword}', num_clips={num_clips}, duration_mode='{duration_mode}'")
 
         # Check disk space
         if not check_disk_space():
@@ -861,18 +984,50 @@ def process():
         transcription_result = transcribe_audio(audio_path, logger)
         
         # Analyze transcript and find best clips
-        clip_data = analyze_transcript(
-            transcription_result['segments'],
-            keyword=keyword,
-            num_clips=num_clips,
-            logger=logger
-        )
+        clip_data = []
+        
+        # Try Groq AI first
+        if groq_client:
+            logger.info(f"Attempting AI analysis with Groq ({min_dur}-{max_dur}s)...")
+            try:
+                clip_data = analyze_transcript_with_groq(
+                    transcription_result['segments'],
+                    num_clips=num_clips,
+                    min_duration=min_dur,
+                    max_duration=max_dur,
+                    logger=logger
+                )
+                if clip_data:
+                    logger.info(f"Groq successfully found {len(clip_data)} clips")
+                else:
+                    logger.warning("Groq returned no clips, falling back to TF-IDF")
+            except Exception as e:
+                logger.error(f"Groq processing failed unexpectedly: {e}")
+        else:
+            logger.info("Groq client not available/configured. Using legacy analysis.")
+            
+        # Fallback to TF-IDF (Note: TF-IDF has hardcoded 15-60s in logical block, might need update but fine for fallback)
+        if not clip_data:
+            logger.info("Starting fallback TF-IDF analysis...")
+            clip_data = analyze_transcript(
+                transcription_result['segments'],
+                keyword=keyword,
+                num_clips=num_clips,
+                logger=logger
+            )
 
         if not clip_data:
-            return jsonify({'error': 'No suitable clips found in video. Try a different keyword or video.'}), 404
+            return jsonify({'error': 'No suitable clips found in video.'}), 404
 
-        # Extract clips (pass audio_path for silence-based boundary detection)
-        clips_info = extract_clips(video_path, clip_data, youtube_id, logger, audio_path=audio_path)
+        # Extract clips (pass segments for dynamic boundary detection)
+        clips_info = extract_clips(
+            video_path, 
+            clip_data, 
+            youtube_id, 
+            logger, 
+            audio_path=audio_path,
+            segments=transcription_result['segments'] 
+        )
 
         # Clean up temporary files after clips are created
         cleanup_files([audio_path, video_path], logger)

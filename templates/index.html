@@ -1,261 +1,223 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Video Clipper - Extract Best Moments from YouTube</title>
-    <meta name="description"
-        content="AI-powered tool to automatically extract the most engaging clips from YouTube videos">
+    <title>AI Video Clipper</title>
+    <meta name="description" content="Extract the best moments from any YouTube video.">
     <link rel="stylesheet" href="/static/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
-
 <body>
-    <div class="app-container">
+    <div class="layout-container">
         <!-- Header -->
-        <header class="header">
-            <div class="logo">
-                <span class="logo-icon">VC</span>
-                <h1>AI Video Clipper</h1>
-            </div>
-            <p class="tagline">Extract the most engaging moments from any YouTube video</p>
+        <header class="app-header">
+            <h1 class="app-title">AI Video Clipper</h1>
+            <button id="themeToggle" class="theme-toggle" aria-label="Toggle Dark Mode">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                <svg class="icon-moon hidden" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
         </header>
 
-        <!-- Main Form -->
+        <!-- Main Input Section -->
         <main class="main-content">
-            <div class="input-card">
-                <form id="clipForm" onsubmit="processVideo(event)">
-                    <div class="form-group">
-                        <label for="youtubeUrl">
-                            <span class="label-icon">URL</span>
-                            YouTube URL
-                        </label>
-                        <input type="url" id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=..." required
-                            autocomplete="off">
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="keyword">
-                                <span class="label-icon">KW</span>
-                                Theme / Keyword <span class="optional">(optional)</span>
-                            </label>
-                            <input type="text" id="keyword" placeholder="e.g., funny moments, tutorial, tips">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="numClips">
-                                <span class="label-icon">#</span>
-                                Number of Clips
-                            </label>
-                            <div class="range-container">
-                                <input type="range" id="numClips" min="1" max="10" value="5"
-                                    oninput="updateClipCount(this.value)">
-                                <span id="clipCount" class="clip-count">5</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn-primary" id="processBtn">
-                        <span class="btn-icon">-></span>
-                        Extract Clips
-                    </button>
-                </form>
-            </div>
-
-            <!-- Processing Status -->
-            <div id="processingStatus" class="processing-status hidden">
-                <div class="loader"></div>
-                <div class="status-text">
-                    <h3>Processing your video...</h3>
-                    <p id="statusMessage">Starting download...</p>
+            <form id="clipForm" class="clip-form" onsubmit="processVideo(event)">
+                <div class="input-group">
+                    <input type="url" id="youtubeUrl" class="input-url" placeholder="Paste YouTube URL here..." required autocomplete="off">
                 </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
+
+                <div class="controls-grid">
+                    <div class="control-item">
+                        <label for="durationMode">Clip Duration</label>
+                        <div class="select-wrapper">
+                            <select id="durationMode">
+                                <option value="short">Short (30-60s)</option>
+                                <option value="long">Long (90-120s)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="control-item">
+                        <label for="numClips">Number of Clips</label>
+                        <div class="select-wrapper">
+                            <select id="numClips">
+                                <option value="1">1</option>
+                                <option value="3" selected>3</option>
+                                <option value="5">5</option>
+                                <option value="10">10</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Optional Keyword (Hidden by default or minimalist) -->
+                <div class="control-item" style="margin-top: 1rem;">
+                    <label for="keyword" class="sr-only">Topic (Optional)</label>
+                    <input type="text" id="keyword" class="input-keyword" placeholder="Filter by topic (optional)...">
+                </div>
+
+                <div class="action-area">
+                    <button type="submit" id="processBtn" class="btn-primary">Generate Clips</button>
+                </div>
+            </form>
+
+            <!-- Status / Loading -->
+            <div id="statusArea" class="status-area hidden">
+                <div class="loading-spinner"></div>
+                <p id="statusMessage" class="status-message">Analyzing video...</p>
+                <div class="progress-container">
+                    <div id="progressBar" class="progress-bar"></div>
                 </div>
             </div>
 
-            <!-- Error Display -->
-            <div id="errorDisplay" class="error-display hidden">
-                <span class="error-icon">!</span>
+            <!-- Error -->
+            <div id="errorArea" class="error-area hidden">
                 <p id="errorMessage"></p>
-                <button onclick="hideError()" class="btn-secondary">Try Again</button>
+                <button type="button" onclick="hideError()" class="btn-text">Dismiss</button>
             </div>
 
-            <!-- Results Section -->
-            <div id="resultsSection" class="results-section hidden">
+            <!-- Results -->
+            <div id="resultsArea" class="results-area hidden">
                 <div class="results-header">
-                    <h2>Extracted Clips</h2>
-                    <div class="results-meta">
-                        <span id="clipCountResult"></span>
-                        <span id="processingTime"></span>
-                    </div>
+                    <h2>Results</h2>
+                    <button onclick="downloadAll()" class="btn-secondary btn-sm">Download All ZIP</button>
                 </div>
-
-                <div class="results-actions">
-                    <button onclick="downloadAll()" class="btn-download-all">
-                        <span class="btn-icon">ZIP</span>
-                        Download All (ZIP)
-                    </button>
-                </div>
-
-                <div id="clipsGrid" class="clips-grid">
-                    <!-- Clips will be injected here -->
+                <div id="clipsList" class="clips-list">
+                    <!-- Clips injected here -->
                 </div>
             </div>
         </main>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <p>Powered by AI - Built with FFmpeg & Whisper</p>
+        
+        <footer class="app-footer">
+            <p>Powered by AI Video Clipper</p>
         </footer>
     </div>
 
+    <script src="/static/script.js"></script>
     <script>
+        // Inline script for simplicity or move to static/script.js
+        // Theme Toggle Logic
+        const themeToggle = document.getElementById('themeToggle');
+        const iconSun = document.querySelector('.icon-sun');
+        const iconMoon = document.querySelector('.icon-moon');
+        
+        // Check system preference using matchMedia
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            if (theme === 'dark') {
+                iconSun.classList.add('hidden');
+                iconMoon.classList.remove('hidden');
+            } else {
+                iconSun.classList.remove('hidden');
+                iconMoon.classList.add('hidden');
+            }
+        }
+
+        // Initialize theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            setTheme(savedTheme);
+        } else {
+            setTheme(prefersDark.matches ? 'dark' : 'light');
+        }
+
+        themeToggle.addEventListener('click', () => {
+            const current = document.documentElement.getAttribute('data-theme');
+            setTheme(current === 'dark' ? 'light' : 'dark');
+        });
+
+        // App Logic
         let currentYoutubeId = null;
 
-        function updateClipCount(value) {
-            document.getElementById('clipCount').textContent = value;
-        }
-
-        function showProcessing() {
-            document.getElementById('processingStatus').classList.remove('hidden');
-            document.getElementById('errorDisplay').classList.add('hidden');
-            document.getElementById('resultsSection').classList.add('hidden');
+        function showStatus(msg) {
+            const area = document.getElementById('statusArea');
+            area.classList.remove('hidden');
+            document.getElementById('statusMessage').textContent = msg;
             document.getElementById('processBtn').disabled = true;
-            document.getElementById('processBtn').innerHTML = '<span class="btn-icon">...</span> Processing...';
+            document.getElementById('resultsArea').classList.add('hidden');
+            document.getElementById('errorArea').classList.add('hidden');
         }
 
-        function hideProcessing() {
-            document.getElementById('processingStatus').classList.add('hidden');
+        function hideStatus() {
+            document.getElementById('statusArea').classList.add('hidden');
             document.getElementById('processBtn').disabled = false;
-            document.getElementById('processBtn').innerHTML = '<span class="btn-icon">-></span> Extract Clips';
         }
 
-        function showError(message) {
-            hideProcessing();
-            document.getElementById('errorDisplay').classList.remove('hidden');
-            document.getElementById('errorMessage').textContent = message;
+        function showError(msg) {
+            hideStatus();
+            const area = document.getElementById('errorArea');
+            area.classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = msg;
         }
 
         function hideError() {
-            document.getElementById('errorDisplay').classList.add('hidden');
+            document.getElementById('errorArea').classList.add('hidden');
         }
 
-        function updateStatus(message, progress = 0) {
-            document.getElementById('statusMessage').textContent = message;
-            document.getElementById('progressFill').style.width = progress + '%';
-        }
+        async function processVideo(e) {
+            e.preventDefault();
+            const url = document.getElementById('youtubeUrl').value;
+            const durationMode = document.getElementById('durationMode').value;
+            const numClips = document.getElementById('numClips').value;
+            const keyword = document.getElementById('keyword').value;
 
-        function formatDuration(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        async function processVideo(event) {
-            event.preventDefault();
-
-            const url = document.getElementById('youtubeUrl').value.trim();
-            const keyword = document.getElementById('keyword').value.trim();
-            const numClips = parseInt(document.getElementById('numClips').value);
-
-            if (!url) {
-                showError('Please enter a YouTube URL');
-                return;
-            }
-
-            showProcessing();
-            updateStatus('Downloading video...', 10);
+            showStatus("Downloading & Analyzing video... this may take a minute.");
 
             try {
-                const response = await fetch('/process', {
+                const res = await fetch('/process', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        url: url,
-                        keyword: keyword,
-                        num_clips: numClips
-                    })
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ url, duration_mode: durationMode, num_clips: numClips, keyword })
                 });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.error || 'Processing failed');
-                }
-
-                hideProcessing();
+                
+                const data = await res.json();
+                
+                if (!res.ok) throw new Error(data.error || 'Failed to process');
+                
+                hideStatus();
                 displayResults(data);
-
-            } catch (error) {
-                showError(error.message);
+            } catch (err) {
+                showError(err.message);
             }
         }
 
         function displayResults(data) {
             currentYoutubeId = data.youtube_id;
+            const list = document.getElementById('clipsList');
+            list.innerHTML = '';
+            document.getElementById('resultsArea').classList.remove('hidden');
 
-            document.getElementById('resultsSection').classList.remove('hidden');
-            document.getElementById('clipCountResult').textContent = `${data.total_clips} clips extracted`;
-            document.getElementById('processingTime').textContent = `${data.processing_time}s`;
-
-            const grid = document.getElementById('clipsGrid');
-            grid.innerHTML = '';
-
-            data.clips.forEach((clip, index) => {
-                const clipCard = document.createElement('div');
-                clipCard.className = 'clip-card';
-                clipCard.innerHTML = `
-                    <div class="clip-video-container">
-                        <video 
-                            controls 
-                            preload="metadata"
-                            poster=""
-                        >
-                            <source src="/clips/${data.youtube_id}/${clip.filename}" type="video/mp4">
-                            Your browser does not support video playback.
-                        </video>
+            data.clips.forEach((clip, i) => {
+                const div = document.createElement('div');
+                div.className = 'clip-item';
+                div.innerHTML = `
+                    <div class="clip-preview">
+                        <video controls preload="metadata" src="/clips/${data.youtube_id}/${clip.filename}"></video>
                     </div>
-                    <div class="clip-info">
-                        <div class="clip-header">
-                            <span class="clip-number">Clip ${index + 1}</span>
-                            <span class="clip-duration">${formatDuration(clip.duration)}</span>
+                    <div class="clip-details">
+                        <h3>${clip.title || `Clip ${i+1}`}</h3>
+                        <p class="clip-desc">${clip.description || ''}</p>
+                        <div class="clip-meta">
+                            <span>${clip.duration.toFixed(1)}s</span>
+                            <a href="/clips/${data.youtube_id}/${clip.filename}" download class="btn-download">Download MP4</a>
                         </div>
-                        <h3 class="clip-title">${clip.title || 'Untitled Clip'}</h3>
-                        <p class="clip-description">${clip.description}</p>
-                        <div class="clip-timestamps">
-                            <span>${formatDuration(clip.start)} - ${formatDuration(clip.end)}</span>
-                        </div>
-                        <button 
-                            onclick="downloadClip('${data.youtube_id}', '${clip.filename}')" 
-                            class="btn-download"
-                        >
-                            <span class="btn-icon">DL</span>
-                            Download
-                        </button>
                     </div>
                 `;
-                grid.appendChild(clipCard);
+                list.appendChild(div);
             });
-
-            // Scroll to results
-            document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
-        }
-
-        function downloadClip(youtubeId, filename) {
-            window.location.href = `/download/${youtubeId}/${filename}`;
+            
+            // Smooth scroll
+            list.scrollIntoView({behavior: 'smooth', block: 'start'});
         }
 
         function downloadAll() {
-            if (currentYoutubeId) {
-                window.location.href = `/download_all/${currentYoutubeId}`;
-            }
+            if(currentYoutubeId) window.location.href = `/download_all/${currentYoutubeId}`;
         }
     </script>
 </body>
-
 </html>
